@@ -1,38 +1,60 @@
-with open("scrap.txt", "rb") as file:
-    scrap_data = file.read()
-
+from meme import Meme
 import csv
-
+import re
+import time
+import sys
 from bs4 import BeautifulSoup
-from google_images_download import google_images_download
 
-soup = BeautifulSoup(scrap_data, 'html.parser')
-memes = []
+MANUAL = True
+URL = "https://knowyourmeme.com/memes/popular"
 
-tabledata = soup.find_all("td")
+def read_html(path: str) -> bytes:
+    """Reads an html file"""
+    with open(path, 'rb') as file:
+        return file.read()
 
-for data in tabledata:
-    if data.h2 and data.h2.get_text().isascii():
-        memes.append(
-            (data.h2.get_text(strip=True).split('/')[0].replace(",|:",""), data.a['href'])
-        )
+def get_soup(html: bytes) -> BeautifulSoup:
+    """Returns BeautifulSoup object from a html file."""
+    soup = BeautifulSoup(html, 'html.parser')
+    return soup
 
-with open('meme_list.csv', 'w', newline='') as csvfile:
-    writer = csv.writer(csvfile)
-    for name, url in memes:
-        writer.writerow([name, url])
-meme_names = [name for name, url in memes]
+def scrape_memes(soup: BeautifulSoup) -> list:
+    """Scrapes the html to get a list of memes."""
+    memes = []
+    soup_meme = soup.select('td[class*="entry"]')
+    print(soup_meme)
+    for item in soup_meme:
+        meme = Meme(item.h2.get_text(strip=True), item.a['href'])
+        while MANUAL and not meme.is_alphanumspace():
+            meme.name = input(f'Replace {meme.name}:')
 
-for meme in meme_names:
+        memes.append(meme)
+    return memes
 
-    response = google_images_download.googleimagesdownload()   #class instantiation
-    arguments = {"keywords":meme,
-                 "limit":1,
-                 "print_urls":False,
-                 "sk":"meme"}   #creating list of arguments
-    paths = response.download(arguments)   #passing the arguments to the function
-    print(paths)   #printing absolute paths of the downloaded images
+def write_scraped_memes(memes: list):
+    """Writes the memes to a csv"""
+    ts = time.strftime('%s')
+    path = f'scraped_memes_{ts}.csv'
 
+    with open(path, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        for meme in memes:
+            writer.writerow([meme.name, meme.url])
+    print(f'Memes written to {path}!')
 
-print(meme_names)
-#print(soup.prettify())
+def read_scraped_memes(path: str) -> list:
+    memes = []
+    with open(path, 'r', newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            meme = Meme(row[0], row[1])
+            memes.append(meme)
+    return memes
+        
+
+if __name__ == "__main__":
+    html = read_html(sys.argv[1])
+    soup = get_soup(html)
+    memes = scrape_memes(soup)
+    if memes:
+        write_scraped_memes(memes)
